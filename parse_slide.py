@@ -10,9 +10,30 @@ import sys
 import argparse
 import os
 from pptx import Presentation
-from pptx.util import Cm,Inches
+from pptx.util import Cm, Inches
 import urllib.request
 from PIL import Image
+
+
+def slideshare_pptx(info, title):
+    prs = Presentation()
+    for image in info:
+        image = image.attrib["data-full"]
+        blank_slide_layout = prs.slide_layouts[6]
+        slide = prs.slides.add_slide(blank_slide_layout)
+        imageFile = image.split('/')[-1].split('?')[0]
+        urllib.request.urlretrieve(image, imageFile)
+        im = Image.open(imageFile)
+        top = Inches(0)
+        left = Inches(0)
+        width, height = im.size
+        width = Cm(width * 0.04 / 1.5)
+        height = Cm(height * 0.04 / 1.5)
+        pic = slide.shapes.add_picture(imageFile, left, top, width=width, height=height)
+        im.close()
+        os.remove(imageFile)
+        print("--> %s" % image)
+    prs.save(title.strip().replace(' ', '').replace("/", "_") + '.pptx')
 
 
 def speakerdeck_pptx(info, title):
@@ -50,6 +71,19 @@ def speakerdeck_pdf(info, title):
     pdf.save()
 
 
+def slideshare_pdf(info, title):
+    pdf = reportlab.pdfgen.canvas.Canvas(title.strip().replace(' ', '').replace("/", "_") + '.pdf')
+    for image in info:
+        image = image.attrib["data-full"]
+        page = reportlab.lib.utils.ImageReader(image)
+        page_width, page_height = page.getSize()
+        pdf.setPageSize((page_width, page_height))
+        pdf.drawImage(page, 0, 0, page_width, page_height)
+        pdf.showPage()
+        print("--> %s" % image)
+    pdf.save()
+
+
 def parse_speakerdeck(url, exportType='pdf'):
     try:
         htmlTag = pq(url)
@@ -71,9 +105,30 @@ def parse_speakerdeck(url, exportType='pdf'):
             print(err)
 
 
+def parse_slideshare(url, exportType='pdf'):
+    try:
+        htmlTag = pq(url)
+        lastResult = htmlTag("img.slide_image")
+        title = htmlTag('title').html()
+        if exportType == 'pdf':
+            slideshare_pdf(lastResult, title)
+        elif exportType == 'pptx':
+            slideshare_pptx(lastResult, title)
+        else:
+            slideshare_pdf(lastResult, title)
+
+    except urllib.error.HTTPError as err:
+        if '404' in err:
+            print("not found page.")
+        else:
+            print(err)
+
+
 def parse_page(url, type):
     if 'speakerdeck.com' in url:
         parse_speakerdeck(url, type)
+    elif 'slideshare.net':
+        parse_slideshare(url, type)
 
 
 if __name__ == '__main__':
